@@ -21,3 +21,7 @@
 {% macro redshift__get_column_size() %}
   {{ return(65535) }}
 {% endmacro %}
+
+{% macro sqlserver__get_column_size() %}
+  {{ return(none) }}
+{% endmacro %}

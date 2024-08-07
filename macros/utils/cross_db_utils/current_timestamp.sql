@@ -1,5 +1,5 @@
 {% macro edr_current_timestamp() -%}
-    {{ adapter.dispatch('edr_current_timestamp','elementary')() }}
+    {{ return(adapter.dispatch('edr_current_timestamp','elementary')()) }}
 {%- endmacro %}
 
 {% macro default__edr_current_timestamp() -%}
@@ -22,9 +22,13 @@
     cast(current_timestamp() as timestamp)
 {% endmacro %}
 
+{% macro sqlserver__edr_current_timestamp() -%}
+    GETDATE()
+{%- endmacro %}
+
 
 {% macro edr_current_timestamp_in_utc() -%}
-    {{ adapter.dispatch('edr_current_timestamp_in_utc','elementary')() }}
+    {{ return(adapter.dispatch('edr_current_timestamp_in_utc','elementary')()) }}
 {%- endmacro %}
 
 {% macro default__edr_current_timestamp_in_utc() -%}
@@ -62,3 +66,7 @@
 {% macro trino__edr_current_timestamp_in_utc() -%}
     cast(current_timestamp at time zone 'UTC' as timestamp(6))
 {%- endmacro -%}
+
+{% macro sqlserver__edr_current_timestamp_in_utc() -%}
+    GETUTCDATE()
+{%- endmacro %}

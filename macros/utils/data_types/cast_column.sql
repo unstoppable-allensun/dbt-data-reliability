@@ -21,6 +21,21 @@
     )
 {%- endmacro -%}
 
+{%- macro sqlserver__edr_cast_as_timestamp(timestamp_field) -%}
+     case
+        -- Attempt to cast the timestamp field to datetime, if successful, cast to date
+        when try_cast({{ timestamp_field }} as {{ elementary.edr_type_timestamp() }}) is not null then
+            cast({{ timestamp_field }} as {{ elementary.edr_type_timestamp() }})
+        
+        -- Check if the date is in MM/DD/YYYY format and convert it
+        when try_convert(datetime, {{ timestamp_field }}, 101) is not null then
+            cast(try_convert(datetime, {{ timestamp_field }}, 101) as {{ elementary.edr_type_timestamp() }})
+        
+        -- If the date is invalid, handle it accordingly (e.g., set to NULL)
+        else null
+    end
+{%- endmacro -%}
+
 {%- macro edr_cast_as_float(column) -%}
     cast({{ column }} as {{ elementary.edr_type_float() }})
 {%- endmacro -%}
@@ -77,6 +92,20 @@
     )
 {%- endmacro -%}
 
+{%- macro sqlserver__edr_cast_as_date(timestamp_field) -%}
+    case
+        -- Attempt to cast the timestamp field to datetime, if successful, cast to date
+        when try_cast({{ timestamp_field }} as {{ elementary.edr_type_date() }}) is not null then
+            cast({{ timestamp_field }} as {{ elementary.edr_type_date() }})
+        
+        -- Check if the date is in MM/DD/YYYY format and convert it
+        when try_convert(datetime, {{ timestamp_field }}, 101) is not null then
+            cast(try_convert(datetime, {{ timestamp_field }}, 101) as {{ elementary.edr_type_date() }})
+        
+        -- If the date is invalid, handle it accordingly (e.g., set to NULL)
+        else null
+    end
+{%- endmacro -%}
 
 {%- macro const_as_text(string) -%}
     {{ return(adapter.dispatch('const_as_text', 'elementary')(string)) }}

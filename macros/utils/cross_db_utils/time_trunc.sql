@@ -10,3 +10,9 @@
 {% macro bigquery__edr_time_trunc(date_part, date_expression) %}
     timestamp_trunc(cast({{ date_expression }} as timestamp), {{ date_part }})
 {% endmacro %}
+
+{% macro sqlserver__edr_time_trunc(date_part, date_expression) -%}
+    {%- if date_part == 'day' %}
+        cast(cast({{ date_expression }} as date) as {{ elementary.edr_type_timestamp() }})
+    {%- endif %}
+{%- endmacro %}

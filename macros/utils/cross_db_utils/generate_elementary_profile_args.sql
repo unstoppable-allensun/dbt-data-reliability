@@ -1,7 +1,7 @@
 {% macro generate_elementary_profile_args(method=none, overwrite_values=none) %}
   {#
     Returns a list of parameters for elementary profile.
-    Each parameter consists of a dict consisting of:
+    Each parameter consists of a dict consisting of: 
       name
       value
       comment
@@ -167,6 +167,19 @@
   {% do return(parameters) %}
 {% endmacro %}
 
+{% macro sqlserver__generate_elementary_profile_args(method, elementary_database, elementary_schema) %}
+  {% do return([
+    _parameter("type", target.type),
+    _parameter("driver", "<DRIVER>"),
+    _parameter("server", target.host),
+    _parameter("port", target.port),
+    _parameter("user", target.user),
+    _parameter("password", "<PASSWORD>"),
+    _parameter("database", elementary_database),
+    _parameter("schema", elementary_schema),
+    _parameter("trust_cert", "true"),
+  ]) %}
+{% endmacro %}
 
 {% macro default__generate_elementary_profile_args(method, elementary_database, elementary_schema) %}
 Adapter "{{ target.type }}" is not supported on Elementary.

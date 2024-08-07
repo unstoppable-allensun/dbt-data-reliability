@@ -91,6 +91,11 @@
 
 
 {% macro empty_table(column_name_and_type_list) %}
+    {{ adapter.dispatch('empty_table','elementary')(column_name_and_type_list) }}
+{% endmacro %}
+
+
+{% macro default__empty_table(column_name_and_type_list) %}
 
     {%- set empty_table_query -%}
         select * from (
@@ -107,12 +112,63 @@
 {% endmacro %}
 
 
+{% macro sqlserver__empty_table(column_name_and_type_list) %}
+
+    {%- set empty_table_query -%}
+        select
+        {% for column in column_name_and_type_list %}
+            {{ elementary.empty_column(column[0], column[1]) }} {%- if not loop.last -%},{%- endif %}
+        {% endfor %}
+        where 1 = 0
+    {%- endset -%}
+
+    {{- return(empty_table_query)-}}
+
+{% endmacro %}
+
+
 {% macro empty_column(column_name, data_type) %}
+    {{ adapter.dispatch('empty_column','elementary')(column_name, data_type) }}
+{% endmacro %}
+
+
+{% macro default__empty_column(column_name, data_type) %}
 
     {%- set dummy_values = elementary.dummy_values() %}
 
     {%- if data_type == 'boolean' %}
         cast ({{ dummy_values['boolean'] }} as {{ elementary.edr_type_bool()}}) as {{ column_name }}
+    {%- elif data_type == 'timestamp' -%}
+        cast('{{ dummy_values['timestamp'] }}' as {{ elementary.edr_type_timestamp() }}) as {{ column_name }}
+    {%- elif data_type == 'int' %}
+        cast({{ dummy_values['int'] }} as {{ elementary.edr_type_int() }}) as {{ column_name }}
+    {%- elif data_type == 'bigint' %}
+        cast({{ dummy_values['bigint'] }} as {{ elementary.edr_type_bigint() }}) as {{ column_name }}
+    {%- elif data_type == 'float' %}
+        cast({{ dummy_values['float'] }} as {{ elementary.edr_type_float() }}) as {{ column_name }}
+    {%- elif data_type == 'long_string' %}
+        cast('{{ dummy_values['long_string'] }}' as {{ elementary.edr_type_long_string() }}) as {{ column_name }}
+    {%- else %}
+        cast('{{ dummy_values['string'] }}' as {{ elementary.edr_type_string() }}) as {{ column_name }}
+    {%- endif %}
+
+{% endmacro %}
+
+
+{% macro sqlserver__empty_column(column_name, data_type) %}
+
+    {%- set dummy_values = elementary.dummy_values() %}
+
+    {%- if data_type == 'boolean' %}
+        {%- if dummy_values['boolean'] is string %}
+            case 
+                when lower('{{ dummy_values['boolean'] }}') = 'true' then cast(1 as {{ elementary.edr_type_bool() }})
+                when lower('{{ dummy_values['boolean'] }}') = 'false' then cast(0 as {{ elementary.edr_type_bool() }})
+                else cast('{{ dummy_values['boolean'] }}' as {{ elementary.edr_type_bool() }})
+            end as {{ column_name }}
+        {%- else %}
+            cast({{ dummy_values['boolean'] }} as {{ elementary.edr_type_bool() }}) as {{ column_name }}
+        {%- endif %}
     {%- elif data_type == 'timestamp' -%}
         cast('{{ dummy_values['timestamp'] }}' as {{ elementary.edr_type_timestamp() }}) as {{ column_name }}
     {%- elif data_type == 'int' %}

@@ -67,6 +67,13 @@ GRANT SELECT ON ALL TABLES IN SCHEMA {{ parameters["schema"] }} TO {{ parameters
 ALTER DEFAULT PRIVILEGES IN SCHEMA {{ parameters["schema"] }} GRANT SELECT ON TABLES TO {{ parameters["user"] }};
 {% endmacro %}
 
+{% macro sqlserver__get_profile_creation_query(parameters) %}
+CREATE LOGIN {{ parameters["user"] }} WITH PASSWORD = '{{ parameters["password"] }}';
+USE {{ parameters["database"] }};
+CREATE USER {{ parameters["user"] }} FOR LOGIN {{ parameters["user"] }};
+GRANT SELECT ON SCHEMA::{{ parameters["schema"] }} TO {{ parameters["user"] }};
+{% endmacro %}
+
 
 {# Databricks, BigQuery, Spark #}
 {% macro default__get_profile_creation_query(parameters) %}

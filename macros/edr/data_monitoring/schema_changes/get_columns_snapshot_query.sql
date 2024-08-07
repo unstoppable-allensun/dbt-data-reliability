@@ -47,6 +47,7 @@
     ),
 
     columns_snapshot as (
+
         select
             full_table_name,
             database_name,
@@ -58,13 +59,14 @@
             case when
                     {{ elementary.full_column_name() }} not in ({{ known_columns_query }})
                     and full_table_name in ({{ known_tables_query }})
-                then true
-                else false
+                then 1
+                else 0
             end as is_new
         from columns_info
     ),
 
-    columns_snapshot_with_id as (
+    columns_snapshot_with_id_base as (
+
         select
             {{ elementary.generate_surrogate_key([
               'full_table_name',
@@ -78,7 +80,16 @@
             is_new,
             detected_at
         from columns_snapshot
-        group by 1,2,3,4,5,6,7
+    ),
+    columns_snapshot_with_id as (
+        select * from columns_snapshot_with_id_base
+        group by column_state_id, 
+            full_column_name,
+            full_table_name,
+            column_name,
+            data_type,
+            is_new,
+            detected_at
     )
 
     select

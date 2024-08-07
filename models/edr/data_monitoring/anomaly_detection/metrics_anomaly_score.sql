@@ -27,12 +27,23 @@ time_window_aggregation as (
         bucket_duration_hours,
         updated_at,
         avg(metric_value) over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) as training_avg,
-        stddev(metric_value) over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) as training_stddev,
+        {{ elementary.standard_deviation('metric_value') }} over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) as training_stddev,
         count(metric_value) over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) as training_set_size,
         last_value(bucket_end) over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) training_end,
         first_value(bucket_end) over (partition by metric_name, full_table_name, column_name order by bucket_start asc rows between unbounded preceding and current row) as training_start
     from data_monitoring_metrics
-    {{ dbt_utils.group_by(12) }}
+    group by id,
+        full_table_name,
+        column_name,
+        dimension,
+        dimension_value,
+        metric_name,
+        metric_value,
+        source_value,
+        bucket_start,
+        bucket_end,
+        bucket_duration_hours,
+        updated_at
 ),
 
 metrics_anomaly_score as (
@@ -62,11 +73,26 @@ metrics_anomaly_score as (
         where
             metric_value is not null
             and training_avg is not null
-            and bucket_end >= {{ elementary.edr_timeadd('day', '-7', elementary.edr_date_trunc('day', elementary.edr_current_timestamp())) }}
-    {{ dbt_utils.group_by(15) }}
-    order by bucket_end desc
-
-
+            and bucket_end >= {{ elementary.edr_timeadd('day', '-7', dbt.date_trunc('day', elementary.edr_current_timestamp())) }}
+    group by id,
+        full_table_name,
+        column_name,
+        dimension,
+        dimension_value,
+        metric_name,
+        case
+            when training_stddev is null then null
+            when training_stddev = 0 then 0
+            else (metric_value - training_avg) / (training_stddev)
+        end,
+        metric_value,
+        bucket_start,
+        bucket_end,
+        training_avg,
+        training_stddev,
+        training_start,
+        training_end,
+        training_set_size
 ),
 
 final as (
@@ -89,8 +115,8 @@ final as (
         training_set_size,
         updated_at,
         case
-            when abs(anomaly_score) > {{ elementary.get_config_var('anomaly_sensitivity') }} then true
-            else false end
+            when abs(anomaly_score) > {{ elementary.get_config_var('anomaly_sensitivity') }} then 1
+            else 0 end
         as is_anomaly
     from metrics_anomaly_score
 )

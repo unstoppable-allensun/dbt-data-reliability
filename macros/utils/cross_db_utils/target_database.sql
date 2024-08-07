@@ -26,3 +26,7 @@
 {% macro trino__target_database() %}
     {% do return(target.database) %}
 {% endmacro %}
+
+{% macro sqlserver__target_database() -%}
+    {% do return(target.database) %}
+{%- endmacro %}

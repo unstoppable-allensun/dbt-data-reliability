@@ -13,6 +13,11 @@
   {% do return(result) %}
 {% endmaterialization %}
 
+{%- materialization test, adapter='sqlserver' -%}
+  {% set result = elementary.materialize_test(dbt.materialization_test_default) %}
+  {% do return(result) %}
+{% endmaterialization %}
+
 {% macro materialize_test(materialization_macro) %}
   {% if not elementary.is_elementary_enabled() %}
     {% do return(materialization_macro()) %}
@@ -85,7 +90,7 @@
         'test_results_query': elementary.get_compiled_code(flattened_test),
         'test_name': elementary.insensitive_get_dict_value(flattened_test, 'name'),
         'test_params': elementary.insensitive_get_dict_value(flattened_test, 'test_params'),
-        'severity': elementary.insensitive_get_dict_value(flattened_test, 'severity'),
+        'severity': elementary.insensitive_get_dict_value(flattened_test, 'severity') | lower,
         'test_short_name': elementary.insensitive_get_dict_value(flattened_test, 'short_name'),
         'test_alias': elementary.insensitive_get_dict_value(flattened_test, 'alias'),
         'result_rows': result_rows
@@ -104,6 +109,10 @@
 {% endmacro %}
 
 {% macro query_test_result_rows(sample_limit=none, ignore_passed_tests=false) %}
+  {{ return(adapter.dispatch('query_test_result_rows', 'elementary')(sample_limit, ignore_passed_tests)) }}
+{% endmacro %}
+
+{% macro default__query_test_result_rows(sample_limit=none, ignore_passed_tests=false) %}
   {% if sample_limit == 0 %} {# performance: no need to run a sql query that we know returns an empty list #}
     {% do return([]) %}
   {% endif %}
@@ -112,12 +121,46 @@
     {% do return([]) %}
   {% endif %}
   {% set query %}
-    with test_results as (
-      {{ sql }}
-    )
-    select * from test_results {% if sample_limit is not none %} limit {{ sample_limit }} {% endif %}
+      with test_results as (
+      	{{ sql }}
+    	)
+    	select * from test_results {% if sample_limit is not none %} limit {{ sample_limit }} {% endif %}
   {% endset %}
   {% do return(elementary.agate_to_dicts(elementary.run_query(query))) %}
+{% endmacro %}
+
+{% macro sqlserver__query_test_result_rows(sample_limit=none, ignore_passed_tests=false) %}
+  {% if sample_limit == 0 %}
+    {% do return([]) %}
+  {% endif %}
+  {% if ignore_passed_tests and elementary.did_test_pass() %}
+    {% do elementary.debug_log("Skipping sample query because the test passed.") %}
+    {% do return([]) %}
+  {% endif %}
+  {% set query %}
+    {% if 'WITH ' in sql | upper %}
+      {% if sample_limit is not none %}
+        {% set sql_lower = sql | lower %}
+        {% set sql_parts = sql_lower.split("select ") %}
+        {% set last_part = sql_parts.pop() %}
+        {% set modified_last_part = "select top " ~ sample_limit ~ " " ~ last_part %}
+        {% set modified_sql = sql_parts | join("select ") ~ modified_last_part %}
+        {{ modified_sql }}
+      {% else %}
+        {{ sql }}
+      {% endif %}
+    {% else %}
+      with test_results as (
+        {{ sql }}
+      )
+      {% if sample_limit is not none %}
+        select top {{ sample_limit }} * from test_results
+      {% else %}
+        select * from test_results
+      {% endif %}
+    {% endif %}
+  {% endset %}
+  {% do return(elementary.agate_to_dicts(elementary.run_query(query, False))) %}
 {% endmacro %}
 
 {% macro cache_elementary_test_results_rows(elementary_test_results_rows) %}

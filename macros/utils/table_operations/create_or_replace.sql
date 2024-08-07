@@ -2,7 +2,7 @@
     {{ return(adapter.dispatch('create_or_replace', 'elementary')(temporary, relation, sql_query)) }}
 {% endmacro %}
 
-{# Snowflake and Bigquery #}
+{# Snowflake, SQL Server and Bigquery #}
 {% macro default__create_or_replace(temporary, relation, sql_query) %}
     {% do elementary.run_query(dbt.create_table_as(temporary, relation, sql_query)) %}
 {% endmacro %}

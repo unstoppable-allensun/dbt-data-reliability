@@ -33,13 +33,18 @@
     {# For timestamped tests, this will be the bucket start, and for non-timestamped tests it will be the
        bucket end (which is the actual time of the test) #}
     {%- set metric_time_bucket_expr = 'case when bucket_start is not null then bucket_start else bucket_end end' %}
-
     {%- set anomaly_scores_query %}
         {% if test_configuration.timestamp_column %}
-            with buckets as (
+            {% set buckets_sql %}
+                {{ elementary.complete_buckets_cte(metric_properties, min_bucket_start_expr, elementary.edr_quote(detection_end)) }}
+            {% endset %}
+            {% set buckets_table = elementary.build_table_from_query(buckets_sql) %}
+            with buckets_table as (
+                {{ buckets_table }}
+            ),
+            buckets as (
                 select edr_bucket_start, edr_bucket_end
-                from ({{ elementary.complete_buckets_cte(metric_properties, min_bucket_start_expr,
-                                                         elementary.edr_quote(detection_end)) }}) results
+                from buckets_table
                 where edr_bucket_start >= {{ elementary.edr_cast_as_timestamp(min_bucket_start_expr) }}
                   and edr_bucket_end <= {{ elementary.edr_cast_as_timestamp(elementary.edr_quote(detection_end)) }}
             ),
@@ -139,7 +144,12 @@
                 bucket_start,
                 bucket_end,
                 {{ bucket_seasonality_expr }} as bucket_seasonality,
-                {{ test_configuration.anomaly_exclude_metrics or 'FALSE' }} as is_excluded,
+                case
+                    when '{{ test_configuration.anomaly_exclude_metrics }}' = 'None' then 0
+                    when '{{ test_configuration.anomaly_exclude_metrics }}' = 'true' then 1
+                    when '{{ test_configuration.anomaly_exclude_metrics }}' = 'false' then 0
+                    else 0
+                end as is_excluded,
                 bucket_duration_hours,
                 updated_at
             from grouped_metrics_duplicates
@@ -163,13 +173,25 @@
                 bucket_duration_hours,
                 updated_at,
                 avg(metric_value) over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) as training_avg,
-                stddev(metric_value) over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) as training_stddev,
+                {{ elementary.standard_deviation('metric_value') }} over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) as training_stddev,
                 count(metric_value) over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) as training_set_size,
                 last_value(bucket_end) over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) training_end,
                 first_value(bucket_end) over (partition by metric_name, full_table_name, column_name, dimension, dimension_value, bucket_seasonality order by bucket_end asc rows between unbounded preceding and current row) as training_start
             from grouped_metrics
-            where not is_excluded
-            {{ dbt_utils.group_by(13) }}
+	    where is_excluded = 0
+            group by metric_id,
+                full_table_name,
+                column_name,
+                dimension,
+                dimension_value,
+                metric_name,
+                metric_value,
+                source_value,
+                bucket_start,
+                bucket_end,
+                bucket_seasonality,
+                bucket_duration_hours,
+                updated_at
         ),
 
         anomaly_scores as (
@@ -238,7 +260,7 @@
 
     {% if test_configuration.ignore_small_changes.drop_failure_percent_threshold %}
       {%- set drop_avg_threshold -%}
-        ((1 + {{ test_configuration.ignore_small_changes.drop_failure_percent_threshold }}/100.0) * training_avg)
+        ((1 - {{ test_configuration.ignore_small_changes.drop_failure_percent_threshold }}/100.0) * training_avg)
       {%- endset -%}
       {%- set min_val -%}
         {{ elementary.arithmetic_min(drop_avg_threshold, min_val) }}
@@ -246,7 +268,7 @@
     {% endif %}
 
     {%- set max_val -%}
-      {{ test_configuration.anomaly_sensitivity }} * training_stddev + training_avg
+      ({{ test_configuration.anomaly_sensitivity }} * training_stddev + training_avg)
     {%- endset -%}
 
     {% if test_configuration.ignore_small_changes.spike_failure_percent_threshold %}

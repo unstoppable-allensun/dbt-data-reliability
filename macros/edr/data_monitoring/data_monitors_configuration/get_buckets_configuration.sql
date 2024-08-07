@@ -5,8 +5,18 @@
 {% endmacro %}
 
 {% macro get_trunc_min_bucket_start_expr(detection_end, metric_properties, days_back) %}
+    {{ adapter.dispatch('get_trunc_min_bucket_start_expr','elementary')(detection_end, metric_properties, days_back) }}
+{% endmacro %}
+
+{% macro default__get_trunc_min_bucket_start_expr(detection_end, metric_properties, days_back) %}
     {%- set untruncated_min = (detection_end - modules.datetime.timedelta(days_back | int)).strftime("%Y-%m-%d 00:00:00") %}
     {%- set trunc_min_bucket_start_expr = elementary.edr_date_trunc(metric_properties.time_bucket.period, elementary.edr_cast_as_timestamp(elementary.edr_quote(untruncated_min)))%}
+    {{ return(trunc_min_bucket_start_expr) }}
+{% endmacro %}
+
+{% macro sqlserver__get_trunc_min_bucket_start_expr(detection_end, metric_properties, days_back) %}
+    {%- set untruncated_min = (detection_end - modules.datetime.timedelta(days_back | int)).strftime("%Y-%m-%d 00:00:00") %}
+    {%- set trunc_min_bucket_start_expr = dbt.date_trunc(metric_properties.time_bucket.period, elementary.edr_cast_as_timestamp(elementary.edr_quote(untruncated_min)))%}
     {{ return(trunc_min_bucket_start_expr) }}
 {% endmacro %}
 
@@ -54,9 +64,16 @@
     {%- endset %}
 
     {%- set incremental_bucket_times_query %}
-        with all_buckets as (
+        {% set buckets_sql %}
+            {{ elementary.complete_buckets_cte(metric_properties, trunc_min_bucket_start_expr, detection_end_expr) }}
+        {% endset %}
+        {% set buckets_table = elementary.build_table_from_query(buckets_sql) %}
+        with buckets_table as (
+            {{ buckets_table }}
+        ),
+        all_buckets as (
             select edr_bucket_start as bucket_start, edr_bucket_end as bucket_end
-            from ({{ elementary.complete_buckets_cte(metric_properties, trunc_min_bucket_start_expr, detection_end_expr) }}) results
+            from buckets_table
             where edr_bucket_start >= {{ trunc_min_bucket_start_expr }}
             and edr_bucket_end <= {{ detection_end_expr }}
         ),

@@ -136,6 +136,37 @@
     {% endif %}
 {% endmacro %}
 
+{% macro sqlserver__get_tables_from_information_schema(schema_tuple) %}
+    {%- set database_name, schema_name = schema_tuple %}
+    {% set schema_relation = api.Relation.create(database=database_name, schema=schema_name).without_identifier() %}
+    {# filtered_information_schema_tables embeds this sql, but inline views in sql server #}
+    {# cannot start with WITH so this has been modified to remove WITH #}
+    select
+        case when tables.table_name is not null
+            then {{ elementary.full_table_name('TABLES') }}
+        else null end as full_table_name,
+        upper(schemas.database_name + '.' + schemas.schema_name) as full_schema_name,
+        schemas.database_name as database_name,
+        schemas.schema_name as schema_name,
+        tables.table_name
+    from (
+        select
+            upper(table_catalog) as database_name,
+            upper(table_schema) as schema_name,
+            upper(table_name) as table_name
+        from {{ schema_relation.information_schema('TABLES') }}
+        where upper(table_schema) = upper('{{ schema_name }}')
+    ) tables full outer join (
+        select
+            upper(catalog_name) as database_name,
+            upper(schema_name) as schema_name
+        from {{ schema_relation.information_schema('SCHEMATA') }}
+        where upper(schema_name) = upper('{{ schema_name }}')
+    ) schemas
+    on (tables.database_name = schemas.database_name and tables.schema_name = schemas.schema_name)
+
+{% endmacro %}
+
 {% macro get_empty_tables_from_information_schema_table() %}
     {{ elementary.empty_table([
         ('full_table_name', 'string'),

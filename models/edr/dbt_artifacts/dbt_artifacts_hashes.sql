@@ -16,11 +16,14 @@
   "dbt_columns",
 ] %}
 
+SELECT TOP 100 PERCENT *
+FROM (
 {% for artifact_model in artifact_models %}
-select
-  '{{ artifact_model }}' as artifacts_model,
-   metadata_hash
-from {{ ref(artifact_model) }}
-{% if not loop.last %} union all {% endif %}
+    SELECT
+      '{{ artifact_model }}' AS artifacts_model,
+       metadata_hash
+    FROM {{ ref(artifact_model) }}
+    {% if not loop.last %} UNION ALL {% endif %}
 {% endfor %}
-order by metadata_hash
+) AS combined_data
+ORDER BY metadata_hash

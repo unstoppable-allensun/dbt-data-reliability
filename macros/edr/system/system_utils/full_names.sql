@@ -1,16 +1,47 @@
 {% macro full_table_name(alias) -%}
+    {{ adapter.dispatch('full_table_name','elementary')(alias) }}
+{%- endmacro %}
+
+
+{% macro default__full_table_name(alias) -%}
     {% if alias is defined %}{%- set alias_dot = alias ~ '.' %}{% endif %}
     upper({{ alias_dot }}database_name || '.' || {{ alias_dot }}schema_name || '.' || {{ alias_dot }}table_name)
 {%- endmacro %}
 
 
+{% macro sqlserver__full_table_name(alias) -%}
+    {% if alias is defined %}{%- set alias_dot = alias ~ '.' %}{% endif %}
+    upper({{ alias_dot }}database_name + '.' + {{ alias_dot }}schema_name + '.' + {{ alias_dot }}table_name)
+{%- endmacro %}
+
+
 {% macro full_schema_name() -%}
+    {{ adapter.dispatch('full_schema_name','elementary')() }}
+{%- endmacro %}
+
+
+{% macro default__full_schema_name() -%}
     upper(database_name || '.' || schema_name)
 {%- endmacro %}
 
 
+{% macro sqlserver__full_schema_name() -%}
+    upper(database_name + '.' + schema_name)
+{%- endmacro %}
+
+
 {% macro full_column_name() -%}
+    {{ adapter.dispatch('full_column_name','elementary')() }}
+{%- endmacro %}
+
+
+{% default__macro full_column_name() -%}
     upper(database_name || '.' || schema_name || '.' || table_name || '.' || column_name)
+{%- endmacro %}
+
+
+{% macro sqlserver__full_column_name() -%}
+    upper(database_name + '.' + schema_name + '.' + table_name + '.' + column_name)
 {%- endmacro %}
 
 
@@ -72,6 +103,24 @@
         {{ return('') }}
     {%- endif -%}
     trim('"' from split(full_table_name,'[.]')[{{ part_index }}]) as {{ part_name }}
+{% endmacro %}
+
+
+{% macro sqlserver__full_name_split(part_name) %}
+    {%- if part_name == 'database_name' -%}
+        {%- set part_index = 0 -%}
+    {%- elif part_name == 'schema_name' -%}
+        {%- set part_index = 1 -%}
+    {%- elif part_name == 'table_name' -%}
+        {%- set part_index = 2 -%}
+    {%- else -%}
+        {{ return('') }}
+    {%- endif -%}
+    SUBSTRING(
+        full_table_name, 
+        CHARINDEX('.', full_table_name, 0) + 1 + {{ part_index }},
+        CHARINDEX('.', full_table_name, CHARINDEX('.', full_table_name, 0) + 1 + {{ part_index }}) - CHARINDEX('.', full_table_name, 0) - 1 - {{ part_index }}
+    ) as {{ part_name }}
 {% endmacro %}
 
 

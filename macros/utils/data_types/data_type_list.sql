@@ -86,7 +86,7 @@
     {%- else %}
         {{ return([]) }}
     {%- endif %}
-    
+
 {% endmacro %}
 
 
@@ -117,6 +117,27 @@
     {% set numeric_list = ['int','integer','bigint','smallint','tinyint','float','real','double','decimal'] | list %}
     {% set timestamp_list = ['timestamp','date'] | list %}
     {% set boolean_list = ["boolean"] | list %}
+
+    {%- if data_type == 'string' %}
+        {{ return(string_list) }}
+    {%- elif data_type == 'numeric' %}
+        {{ return(numeric_list) }}
+    {%- elif data_type == 'timestamp' %}
+        {{ return(timestamp_list) }}
+    {%- elif data_type == "boolean" %}
+        {{ return(boolean_list) }}
+    {%- else %}
+        {{ return([]) }}
+    {%- endif %}
+
+{% endmacro %}
+
+{% macro sqlserver__data_type_list(data_type) %}
+
+    {% set string_list = ['char','varchar','text','nchar','nvarchar','ntext','binary','image', 'varbinary'] | list %}
+    {% set numeric_list = ['bigint', 'decimal', 'int', 'money', 'numeric', 'smallint', 'smallmoney', 'tinyint', 'float', 'real'] | list %}
+    {% set timestamp_list = ['date', 'datetime','datetime2','datetimeoffset','smalldatetime', 'time'] | list %}
+    {% set boolean_list = ["bit"] | list %}
 
     {%- if data_type == 'string' %}
         {{ return(string_list) }}

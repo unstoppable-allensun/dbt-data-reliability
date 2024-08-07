@@ -133,3 +133,22 @@
     {%- endset %}
     {{ return(complete_buckets_cte) }}
 {% endmacro %}
+
+{% macro sqlserver__complete_buckets_cte(time_bucket, bucket_end_expr, min_bucket_start_expr, max_bucket_end_expr) %}
+    {%- set complete_buckets_cte %}
+        with timestamps as (
+          select cast({{ min_bucket_start_expr }} as datetime) as edr_bucket_start
+          union all
+          select dateadd({{ time_bucket.period }}, {{ time_bucket.count }}, edr_bucket_start) as edr_bucket_start
+          from timestamps
+          where dateadd({{ time_bucket.period }}, {{ time_bucket.count }}, edr_bucket_start) < cast({{ max_bucket_end_expr }} as datetime)
+        )
+        select
+          edr_bucket_start,
+          dateadd({{ time_bucket.period }}, {{ time_bucket.count }}, edr_bucket_start) as edr_bucket_end
+        from timestamps
+        where dateadd({{ time_bucket.period }}, {{ time_bucket.count }}, edr_bucket_start) <= cast({{ max_bucket_end_expr }} as datetime)
+        option (MAXRECURSION 10000)
+    {%- endset %}
+    {{ return(complete_buckets_cte) }}
+{% endmacro %}

@@ -62,7 +62,7 @@
 {% endmacro %}
 
 {% macro databricks__get_columns_from_information_schema(database_name, schema_name, table_name = none) %}
-    {% if target.catalog is none %}
+    {% if target.catalog is none or target.catalog.lower() == 'hive_metastore' %}
         {# Information schema is only available when using Unity Catalog. #}
         {% do return(elementary.get_empty_columns_from_information_schema_table()) %}
     {% endif %}
@@ -83,6 +83,22 @@
 
 {% macro spark__get_columns_from_information_schema(database_name, schema_name, table_name = none) %}
     {{ elementary.get_empty_columns_from_information_schema_table() }}
+{% endmacro %}
+
+{% macro sqlserver__get_columns_from_information_schema(database_name, schema_name, table_name = none) %}
+    {% set schema_relation = api.Relation.create(database=database_name, schema=schema_name).without_identifier() %}
+    select
+        upper(table_catalog + '.' + table_schema + '.' + table_name) as full_table_name,
+        upper(table_catalog) as database_name,
+        upper(table_schema) as schema_name,
+        upper(table_name) as table_name,
+        upper(column_name) as column_name,
+        data_type
+    from {{ schema_relation.information_schema('COLUMNS') }}
+    where upper(table_schema) = upper('{{ schema_name }}')
+    {% if table_name %}
+        and upper(table_name) = upper('{{ table_name }}')
+    {% endif %}
 {% endmacro %}
 
 {% macro get_empty_columns_from_information_schema_table() %}

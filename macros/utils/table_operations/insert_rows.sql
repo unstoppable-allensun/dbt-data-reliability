@@ -186,11 +186,39 @@
     {{- return(string_value | replace("'", "''")) -}}
 {%- endmacro -%}
 
-{%- macro render_value(value, data_type) -%}
+{%- macro sqlserver__escape_special_chars(string_value) -%}
+    {{- return(string_value | replace("'", "''")) -}}
+{%- endmacro -%}
+
+{% macro render_value(value, data_type) %}
+    {{ return(adapter.dispatch('render_value','elementary')(value, data_type)) }}
+{% endmacro %}
+
+{%- macro default__render_value(value, data_type) -%}
     {%- if value is defined and value is not none -%}
         {%- if value is number -%}
             {{- value -}}
         {%- elif value is string and data_type == 'timestamp' -%}
+            {{- elementary.edr_cast_as_timestamp(elementary.edr_quote(value)) -}}
+        {%- elif value is string -%}
+            '{{- elementary.escape_special_chars(value) -}}'
+        {%- elif value is mapping or value is sequence -%}
+            '{{- elementary.escape_special_chars(tojson(value)) -}}'
+        {%- else -%}
+            NULL
+        {%- endif -%}
+    {%- else -%}
+        NULL
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro sqlserver__render_value(value, data_type) -%}
+    {%- if value is defined and value is not none -%}
+        {%- if value is boolean -%}
+            {{- 1 if value else 0 -}}
+        {%- elif value is number -%}
+            {{- value -}}
+	{%- elif value is string and data_type == 'timestamp' -%}
             {{- elementary.edr_cast_as_timestamp(elementary.edr_quote(value)) -}}
         {%- elif value is string -%}
             '{{- elementary.escape_special_chars(value) -}}'

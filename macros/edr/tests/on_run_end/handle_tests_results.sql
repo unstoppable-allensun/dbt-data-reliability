@@ -5,7 +5,8 @@
     {% set store_result_rows_in_own_table = elementary.get_config_var("store_result_rows_in_own_table") %}
     {% set elementary_test_results = elementary.get_result_enriched_elementary_test_results(cached_elementary_test_results, cached_elementary_test_failed_row_counts, render_result_rows=(not store_result_rows_in_own_table)) %}
     {% if store_result_rows_in_own_table %}
-      {% set test_result_rows = elementary.pop_test_result_rows(elementary_test_results) %}
+      {% set cloned_test_results = clone_test_results(elementary_test_results) %}
+      {% set test_result_rows = elementary.pop_test_result_rows(cloned_test_results) %}
     {% endif %}
     {% set tables_cache = elementary.get_cache("tables") %}
     {% set test_metrics_tables = tables_cache.get("metrics").get("relations") %}
@@ -23,6 +24,21 @@
     {% endif %}
     {% do elementary.file_log("Handled test results successfully.") %}
     {% do return('') %}
+{% endmacro %}
+
+{% macro clone_test_results(test_results) %}
+  {% set cloned_test_results = [] %}
+  {% for test_result in test_results %}
+      {% set new_test_result = {} %}
+      {% for key, value in test_result.items() %}
+          {% if key != 'result_rows' %}
+              {% set _ = new_test_result.update({key: value}) %}
+          {% endif %}
+      {% endfor %}
+      {% set _ = new_test_result.update({'result_rows': test_result.result_rows if 'result_rows' in test_result else []}) %}
+      {% set _ = cloned_test_results.append(new_test_result) %}
+  {% endfor %}
+  {% do return(cloned_test_results) %}
 {% endmacro %}
 
 {% macro get_result_enriched_elementary_test_results(cached_elementary_test_results, cached_elementary_test_failed_row_counts, render_result_rows=false) %}
@@ -111,7 +127,7 @@
     {% do elementary.run_query(insert_query) %}
 
     {% if not elementary.has_temp_table_support() %}
-        {% do adapter.drop_relation(temp_relation) %}
+        {% do elementary.fully_drop_relation(temp_relation) %}
     {% endif %}
 {% endmacro %}
 
@@ -159,7 +175,7 @@
     {% do elementary.run_query(insert_query) %}
 
     {% if not elementary.has_temp_table_support() %}
-        {% do adapter.drop_relation(temp_relation) %}
+        {% do elementary.fully_drop_relation(temp_relation) %}
     {% endif %}
 {% endmacro %}
 

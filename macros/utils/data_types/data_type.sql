@@ -19,13 +19,17 @@
     {% do return("BOOL") %}
 {% endmacro %}
 
+{% macro sqlserver__edr_type_bool() %}
+    BIT
+{% endmacro %}
+
 
 {%- macro edr_type_string() -%}
     {{ return(adapter.dispatch('edr_type_string', 'elementary')()) }}
 {%- endmacro -%}
 
 {% macro default__edr_type_string() %}
-    {# Redshift #}
+    {# Redshift & SQL Server #}
     {% do return("varchar(4096)") %}
 {% endmacro %}
 
@@ -81,6 +85,10 @@
     {{ return(long_string) }}
 {%- endmacro -%}
 
+{%- macro sqlserver__edr_type_long_string() -%}
+    {% set long_string = 'varchar(max)' %}
+    {{ return(long_string) }}
+{%- endmacro -%}
 
 {% macro edr_type_bigint() %}
     {% set macro = dbt.type_bigint or dbt_utils.type_bigint %}

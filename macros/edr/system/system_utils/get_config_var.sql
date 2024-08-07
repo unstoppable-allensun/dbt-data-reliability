@@ -29,6 +29,7 @@
     'disable_test_alerts': false,
     'disable_source_freshness_alerts': false,
     'disable_run_results': false,
+    'disable_freshness_results': false,
     'disable_tests_results': false,
     'disable_dbt_artifacts_autoupload': false,
     'disable_dbt_columns_autoupload': false,
@@ -86,5 +87,13 @@
 {%- macro trino__get_default_config() -%}
     {% set default_config = elementary.default__get_default_config() %}
     {% do default_config.update({'query_max_size': 250000}) %}
+    {{- return(default_config) -}}
+{%- endmacro -%}
+
+{%- macro sqlserver__get_default_config() -%}
+    {% set default_config = elementary.default__get_default_config() %}
+    {% do default_config.update({'test_sample_row_count': none}) %}
+    {% do default_config.update({'long_string_size': none}) %}
+    {% do default_config.update({'mute_dbt_upgrade_recommendation': true}) %}
     {{- return(default_config) -}}
 {%- endmacro -%}

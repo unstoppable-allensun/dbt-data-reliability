@@ -16,24 +16,25 @@
         from {{ schema_columns_snapshot_relation }}
         where lower(full_table_name) = lower('{{ full_table_name }}')
             and detected_at = {{ previous_schema_time_query }}
-        order by detected_at desc
     {% endset %}
 
     {{ elementary.get_columns_changes_query_generic(full_table_name, cur, pre) }}
 {% endmacro %}
 
 {% macro get_column_changes_from_baseline_query(model_relation, full_table_name, model_baseline_relation, include_added=False) %}
-    {% set cur %}
-        with baseline as (
-            select lower(column_name) as column_name, data_type
-            from {{ model_baseline_relation }}
-        )
+    {% set baseline %}
+        select lower(column_name) as column_name, data_type
+        from {{ model_baseline_relation }}
+    {% endset %}
 
+    {% set cur %}
         select
             columns_snapshot.full_table_name,
             lower(columns_snapshot.column_name) as column_name,
             columns_snapshot.data_type,
-            (baseline.column_name IS NULL) as is_new,
+            CASE 
+                WHEN baseline.column_name IS NULL THEN 1 ELSE 0
+            END as is_new,
             {{ elementary.datetime_now_utc_as_timestamp_column() }} as detected_at
         from ({{ elementary.get_columns_snapshot_query(model_relation, full_table_name) }}) columns_snapshot
         left join baseline on (
@@ -51,17 +52,15 @@
         from {{ model_baseline_relation }}
     {% endset %}
 
-    {{ elementary.get_columns_changes_query_generic(full_table_name, cur, pre, include_added=include_added) }}
+    {{ elementary.get_columns_changes_query_generic(full_table_name, cur, pre, baseline, include_added=include_added) }}
 {% endmacro %}
 
 
-{% macro get_columns_changes_query_generic(full_table_name, cur, pre, include_added=True) %}
+{% macro get_columns_changes_query_generic(full_table_name, cur, pre, baseline=none, include_added=True) %}
     {%- set test_execution_id = elementary.get_test_execution_id() %}
     {%- set test_unique_id = elementary.get_test_unique_id() %}
 
-    with cur as (
-        {{ cur }}
-    ),
+    with {% if baseline %} baseline as ({{ baseline }}),{% endif %} cur as ({{ cur }}),
 
     pre as (
         {{ pre }}
@@ -95,7 +94,7 @@
             {{ elementary.null_string() }} as pre_data_type,
             detected_at as detected_at
         from cur
-        where is_new = true
+        where is_new = 1
 
     ),
     {% endif %}
@@ -142,8 +141,7 @@
         select * from columns_added
         {% endif %}
     ),
-
-    column_changes_test_results as (
+    column_changes_test_results_base as (
 
         {# This is the query that is creating the test results table, by formatting a description and adding id + detection time #}
         select
@@ -162,15 +160,19 @@
             change as test_sub_type,
             case
                 when change = 'column_added'
-                    then 'The column "' || column_name || '" was added'
+                    then 'The column "' + column_name + '" was added'
                 when change= 'column_removed'
-                    then 'The column "' || column_name || '" was removed'
+                    then 'The column "' + column_name + '" was removed'
                 when change= 'type_changed'
-                    then 'The type of "' || column_name || '" was changed from ' || pre_data_type || ' to ' || data_type
+                    then 'The type of "' + column_name + '" was changed from ' + pre_data_type + ' to ' + data_type
                 else NULL
             end as test_results_description
         from all_column_changes
-        {{ dbt_utils.group_by(9) }}
+
+    ),
+    column_changes_test_results as (
+        select * from column_changes_test_results_base
+        group by data_issue_id, detected_at, database_name, schema_name, table_name, column_name, test_type, test_sub_type, test_results_description
 
     )
 

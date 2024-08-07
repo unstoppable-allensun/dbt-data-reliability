@@ -13,10 +13,17 @@
     ),
 
     {% if timestamp_column -%}
+        {% set buckets_sql %}
+            {{ elementary.complete_buckets_cte(metric_properties, min_bucket_start, max_bucket_end) }}
+        {% endset %}
+        {% set buckets_table = elementary.build_table_from_query(buckets_sql) %}
+         buckets_table as (
+            {{ buckets_table }}
+         ),
          buckets as (
-             select edr_bucket_start, edr_bucket_end
-             from ({{ elementary.complete_buckets_cte(metric_properties, min_bucket_start, max_bucket_end) }}) results
-             where edr_bucket_start >= {{ elementary.edr_cast_as_timestamp(min_bucket_start) }}
+            select edr_bucket_start, edr_bucket_end
+            from buckets_table
+            where edr_bucket_start >= {{ elementary.edr_cast_as_timestamp(min_bucket_start) }}
                and edr_bucket_end <= {{ elementary.edr_cast_as_timestamp(max_bucket_end) }}
          ),
 
@@ -33,7 +40,7 @@
         filtered_monitored_table as (
             select {{ column_obj.quoted }},
                    {%- if dimensions -%} {{ elementary.select_dimensions_columns(dimensions, "dimension") }}, {%- endif -%}
-                   {{ elementary.null_timestamp() }} as start_bucket_in_data,
+                   {{ elementary.null_timestamp() }} as start_bucket_in_data
             from monitored_table
         ),
     {% endif %}
@@ -79,12 +86,20 @@
                 from filtered_monitored_table
                 {%- if timestamp_column %}
                     left join buckets on (edr_bucket_start = start_bucket_in_data)
-                {%- endif %}
-                {% if dimensions | length > 0 %}
-                    group by 1,2,3,4,{{ elementary.select_dimensions_columns(prefixed_dimensions) }}
+                    group by
+                        edr_bucket_start,
+                        edr_bucket_end,
+                        {{ elementary.timediff("hour", "edr_bucket_start", "edr_bucket_end") }},
+                        {{ column_obj.name }}
                 {% else %}
-                    group by 1,2,3,4
-                {% endif %}
+                    group by
+                        {{ column_obj.name }}
+                {%- endif %}
+            
+                {% if dimensions | length > 0 %}
+                    ,{{ elementary.select_dimensions_columns(prefixed_dimensions) }}
+                {%- endif %}
+                
         {%- else %}
             {{ elementary.empty_column_monitors_cte() }}
         {%- endif %}

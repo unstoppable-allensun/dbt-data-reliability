@@ -32,12 +32,32 @@
   {% if common_test_config %}
     {% do return(common_test_config.get("failed_row_count_calc")) %}
   {% endif %}
-  {% do return(none) %}
+  {% do return('count(*)') %}
 {% endmacro %}
 
 {% macro get_failed_row_count_calc_query(failed_row_count_calc) %}
-  with results as (
-    {{ sql }}
-  )
-  select {{ failed_row_count_calc }} as count from results
+  {% set sql_lower = sql.lower() %}
+  {% if "with" in sql_lower %}
+    {% set sql_parts = sql_lower.split("select") %}
+    {% if sql_parts | length > 1 %}
+      {# Separate the last SELECT statement #}
+      {% set last_select_parts = sql_parts[-1].split("from", 1) %}
+      
+      {# Replace columns in the last SELECT with failed_row_count_calc #}
+      {% set modified_last_select = "select " + failed_row_count_calc + " as count from " + last_select_parts[1] %}
+      
+      {# Recombine all parts except the last one, then add the modified SELECT #}
+      {% set modified_sql = "select".join(sql_parts[:-1]) + modified_last_select %}
+    {% else %}
+      {% set select_parts = sql_lower.split("from", 1) %}
+      {% set modified_sql = "select " + failed_row_count_calc + " as count from " + select_parts[1] %}
+    {% endif %}
+
+    {{ modified_sql }}
+  {% else %}
+    with results as (
+        {{ sql }}
+    )
+    select {{ failed_row_count_calc }} as count from results
+  {% endif %}
 {% endmacro %}

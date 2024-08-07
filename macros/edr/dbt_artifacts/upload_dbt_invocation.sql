@@ -70,6 +70,9 @@
     {{ return({"user": target.user}) }}
 {% endmacro %}
 
+{% macro sqlserver__get_target_adapter_specific_fields() %}
+    {{ return({"server": target.server, "port": target.port}) }}
+{% endmacro %}
 
 {% macro get_project_name() %}
     {% set project_name = elementary.get_config_var("project_name") %}

@@ -38,3 +38,7 @@
 {% macro trino__edr_hour_of_week_expression(date_expr) %}
     date_format({{ date_expr }}, '%W%H')
 {% endmacro %}
+
+{% macro sqlserver__edr_hour_of_week_expression(date_expr) %}
+   CONCAT(CAST(DATENAME(WEEKDAY, {{ date_expr }}) AS varchar), CAST(DATEPART(HOUR, {{ date_expr }}) AS varchar))
+{% endmacro %}

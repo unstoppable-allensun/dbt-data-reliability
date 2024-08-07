@@ -51,3 +51,17 @@
     {% do elementary.run_query(adapter.dispatch('create_table_as')(False, relation, 'select * from {}'.format(intermediate_relation), replace=true)) %}
     {% do adapter.drop_relation(intermediate_relation) %}
 {% endmacro %}
+
+{% macro sqlserver__replace_table_data(relation, rows) %}
+    {% set intermediate_relation = elementary.create_intermediate_relation(relation, rows, temporary=True) %}
+
+    {% set query %}
+        begin transaction;
+        delete from {{ relation }};
+        insert into {{ relation }} select * from {{ intermediate_relation }};
+        commit transaction;
+    {% endset %}
+    {% do elementary.run_query(query) %}
+
+    {% do adapter.drop_relation(intermediate_relation) %}
+{% endmacro %}

@@ -1,12 +1,11 @@
 {%- macro get_anomaly_query(flattened_test=none) -%}
   {%- set query -%}
-    select * from ({{ elementary.get_read_anomaly_scores_query(flattened_test) }}) results
-    where is_anomalous = true
+    {{ elementary.get_read_anomaly_scores_query(flattened_test, True) }}
   {%- endset -%}
   {{- return(query) -}}
 {%- endmacro -%}
 
-{% macro get_read_anomaly_scores_query(flattened_test=none) %}
+{% macro get_read_anomaly_scores_query(flattened_test=none, only_is_anomalous=False) %}
     {% if not flattened_test %}
       {% set flattened_test = elementary.flatten_test(model) %}
     {% endif %}
@@ -51,43 +50,46 @@
       anomaly_scores_with_is_anomalous as (
         select
           *,
-case when
+          case when
           (
             {{ elementary.anomaly_score_condition(test_configuration) }}
           )
           and bucket_end >= {{ elementary.edr_timeadd('day', backfill_period, 'max_bucket_end') }}
-          then TRUE else FALSE end as is_anomalous
+          then 1 else 0 end as is_anomalous
         from anomaly_scores
       ),
 
       final_results as (
-          select
-          metric_value as value,
-          training_avg as average,
-          {# when there is an anomaly we would want to use the last value of the metric (lag), otherwise visually the expectations would look out of bounds #}
-          case
-          when is_anomalous = TRUE and '{{ test_configuration.anomaly_direction }}' = 'spike' then
+      select
+        metric_value as value,
+        training_avg as average,
+        {# when there is an anomaly we would want to use the last value of the metric (lag), otherwise visually the expectations would look out of bounds #}
+        case
+        when is_anomalous = 1 and '{{ test_configuration.anomaly_direction }}' = 'spike' then
           lag(metric_value) over (partition by full_table_name, column_name, metric_name, dimension, dimension_value, bucket_seasonality order by bucket_end)
-          when is_anomalous = TRUE and '{{ test_configuration.anomaly_direction }}' != 'spike' then
+        when is_anomalous = 1 and '{{ test_configuration.anomaly_direction }}' != 'spike' then
           lag(min_metric_value) over (partition by full_table_name, column_name, metric_name, dimension, dimension_value, bucket_seasonality order by bucket_end)
-          when '{{ test_configuration.anomaly_direction }}' = 'spike' then metric_value
-          else min_metric_value end as min_value,
-          case
-          when is_anomalous = TRUE and '{{ test_configuration.anomaly_direction }}' = 'drop' then
+        when '{{ test_configuration.anomaly_direction }}' = 'spike' then metric_value
+        else min_metric_value end as min_value,
+        case
+        when is_anomalous = 1 and '{{ test_configuration.anomaly_direction }}' = 'drop' then
           lag(metric_value) over (partition by full_table_name, column_name, metric_name, dimension, dimension_value, bucket_seasonality order by bucket_end)
-          when is_anomalous = TRUE and '{{ test_configuration.anomaly_direction }}' != 'drop' then
+        when is_anomalous = 1 and '{{ test_configuration.anomaly_direction }}' != 'drop' then
           lag(max_metric_value) over (partition by full_table_name, column_name, metric_name, dimension, dimension_value, bucket_seasonality order by bucket_end)
-          when '{{ test_configuration.anomaly_direction }}' = 'drop' then metric_value
-          else max_metric_value end as max_value,
-          bucket_start as start_time,
-          bucket_end as end_time,
-          *
-        from anomaly_scores_with_is_anomalous
-        order by bucket_end, dimension_value
+        when '{{ test_configuration.anomaly_direction }}' = 'drop' then metric_value
+        else max_metric_value end as max_value,
+        bucket_start as start_time,
+        bucket_end as end_time,
+        *
+      from anomaly_scores_with_is_anomalous
+      {% if only_is_anomalous %}
+      where is_anomalous = 1
+      {% endif %}
       )
 
       select * from final_results
       where {{ test_configuration.exclude_final_results }}
+      order by end_time, dimension_value
     {%- endset -%}
     {{- return(anomaly_query) -}}
 {% endmacro %}
@@ -105,11 +107,10 @@ case when
 
 {%- macro is_score_anomalous_condition(sensitivity, anomaly_direction) -%}
     {%- set spikes_only_metrics = ['freshness', 'event_freshness'] -%}
-    case when metric_name IN {{ elementary.strings_list_to_tuple(spikes_only_metrics) }} then
-            anomaly_score > {{ sensitivity }}
-    else
-        {{ elementary.set_directional_anomaly(anomaly_direction, anomaly_score, sensitivity) }}
-     end
+    (metric_name in {{ elementary.strings_list_to_tuple(spikes_only_metrics) }} and anomaly_score > {{ sensitivity }})
+    or
+    (metric_name not in {{ elementary.strings_list_to_tuple(spikes_only_metrics) }} and {{ elementary.set_directional_anomaly(anomaly_direction, anomaly_score, sensitivity) }})
+
 {%- endmacro -%}
 
 {%- macro avg_percent_anomalous_condition(spike_failure_percent_threshold, drop_failure_percent_threshold, anomaly_direction) -%}
